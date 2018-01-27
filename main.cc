@@ -108,22 +108,29 @@ std::ostream& operator<<(std::ostream& os, Color color) {
 
 class Square;
 class Piece;
+
 class Piece {
-	public:
 	Type type;
 	Color color;
-	// all sqaures controlled by this piece
+
+	public: // *todo* delete
+	// what is shared? 
+	// the controlled (squares) are sharing the power of the controller (piece).
   	std::vector<std::shared_ptr<Square>> squares;
 
 	public:
 	// constructor
 	Piece() : type(empty), color(none) {}
 
-	Piece(Type type, Color color) {
-		this->type = type;
-		this->color = color;
-	}	
+	Piece(Type type, Color color) : type(type), color(color) {}
 
+	Type getType() {
+		return type;
+	}
+	Color getColor() {
+		return color;
+	}
+	
 	void print() {
 		if (type == empty) {
 			std::cout << type;
@@ -135,13 +142,39 @@ class Piece {
 	void addSquare(std::shared_ptr<Square> pSquare) {
 		squares.push_back(pSquare);
 	}
+	void clearSquares() {
+		squares.clear();
+	}
+/*
+	std::pair<int, int> getCount() {
+		int cblack = 0;
+		int cwhite = 0;
+
+		for (auto square: squares) {
+			// forward declaration of 'Square'
+			switch(square->getPieceColor()) { 
+				case black:
+					cblack++;
+					break;
+				case white:
+					cwhite++;
+					break;
+				default: 
+				 	std::cout << "empty" << std::endl;	
+					break;
+			}
+		}
+		
+		return std::make_pair(cblack, cwhite);
+	}
+*/
 };
 
-
 class Square: public std::enable_shared_from_this<Square> {
-	public:
-	// uptr: one piece can only be in one sqaure
-	std::unique_ptr<Piece> pPiece; // has piece, not shaded
+	public: // *todo* delete
+	// what is unique? 
+	// one piece can only be in one sqaure
+	std::unique_ptr<Piece> pPiece; 
 
 	public:
 	// constructor
@@ -151,22 +184,24 @@ class Square: public std::enable_shared_from_this<Square> {
 		return shared_from_this();	
 	}
 
+	// like put down this piece from hand
+	// never set an empty piece
 	void setPiece(std::unique_ptr<Piece> pPiece) {
 		this->pPiece = std::move(pPiece); // transfer ownership
 	}
 
+	// like hold this piece in hand, and put down an empty piece
 	std::unique_ptr<Piece> getPiece() {
 		std::unique_ptr<Piece> pPiece_ = std::move(pPiece);
-		pPiece_->squares.clear();
 		this->pPiece = std::make_unique<Piece>(empty, none);
 		return std::move(pPiece_);
 	}
 
 	Type getPieceType() {
-		return pPiece->type;
+		return pPiece->getType();
 	}
 	Color getPieceColor() {
-		return pPiece->color;
+		return pPiece->getColor();
 	}
 
 	void print() {
@@ -177,13 +212,20 @@ class Square: public std::enable_shared_from_this<Square> {
 		pPiece->addSquare(pSquare);
 	}
 
+	void clearSquares() {
+		pPiece->clearSquares();
+	}
+/*
+	std::pair<int, int> getCount() {
+		return pPiece->getCount();
+	}
+*/
 };
 
 class Board {
 	std::array<std::array<std::shared_ptr<Square>, NUM_COLUMN>, NUM_ROW> pSquares;
 
 	public:
-
 	Board() {
 		for (int i = 0; i < NUM_ROW; i += 1) {
 			for (int j = 0; j < NUM_COLUMN; j += 1) {
@@ -191,7 +233,6 @@ class Board {
 				pSquares[i][j] = std::make_shared<Square>();
 			}
 		}
-
 	}
 
 	void init() {
@@ -199,6 +240,73 @@ class Board {
 		init_(white);
 	}
 
+	void move(int srow, int scol, int erow, int ecol) {
+		// cannot be in the same square
+		assert(!(srow == erow && scol == ecol));
+
+		pSquares[erow][ecol]->setPiece(pSquares[srow][scol]->getPiece());
+	}
+
+	void print() {
+		mark();
+
+		for (int i = 0; i < NUM_COLUMN; i += 1) {
+			std::cout << '\t'  << (char) ('A' + i) << '\t';
+		}
+		std::cout << '\n';
+
+		for (int i = 0; i < NUM_ROW; i += 1) {
+			int row = NUM_ROW - i - 1;
+			std::cout << row << '\t';
+
+			for (int j = 0; j < NUM_COLUMN; j += 1) {
+			 	pSquares[row][j]->print();
+				std::cout << '\t';
+
+				// number of square this piece on this square control
+				std::cout << pSquares[row][j].use_count() - 1;
+				std::cout << ",";
+
+				// count of balck and white peices that contol this square
+				std::cout << MAGENTA << getCount(pSquares[row][j]).first << RESET;
+				std::cout << ",";
+				std::cout << CYAN << getCount(pSquares[row][j]).second << RESET;
+				std::cout << '\t';
+			}
+				
+			std::cout << row << '\n';
+		}
+
+		for (int i = 0; i < NUM_COLUMN; i += 1) {
+			std::cout << '\t'  << (char) ('A' + i) << '\t';
+		}
+		std::cout << '\n';
+
+	}
+
+	std::pair<int, int> getCount(std::shared_ptr<Square> pSquare) {
+		int cblack = 0;
+		int cwhite = 0;
+
+		// rely on public member variables *todo*
+		for (auto square: pSquare->pPiece->squares) {
+			switch(square->getPieceColor()) {
+				case black:
+					cblack++;
+					break;
+				case white:
+					cwhite++;
+					break;
+				default: 
+				 	std::cout << "empty" << std::endl;	
+					break;
+			}
+		}
+		
+		return std::make_pair(cblack, cwhite);
+	}
+
+	private:
 	void init_(Color color) {
 		// pawn
 		int row = (color == white ? 2 : 7) - 1;
@@ -230,39 +338,129 @@ class Board {
 		pSquares[row][cor]->setPiece(std::make_unique<Piece>(king, color));
 	}
 
-	void mark(int row, int col, Type type) {
-	
+	void clear() {
+		for (int i = 0; i < NUM_ROW; i += 1) {
+			for (int j = 0; j < NUM_COLUMN; j += 1) {
+				pSquares[i][j]->clearSquares();
+			}
+		}
 	}
 
 	void mark() {
-		pSquares[0][0]->addSquare(pSquares[0][1]->getptr());
-		pSquares[0][0]->addSquare(pSquares[1][0]->getptr());
-
-		pSquares[0][1]->addSquare(pSquares[1][2]->getptr());
-		pSquares[0][1]->addSquare(pSquares[1][0]->getptr());
-	}
-
-	void print() {
+		clear();
 		for (int i = 0; i < NUM_ROW; i += 1) {
-			int row = NUM_ROW - i - 1;
 			for (int j = 0; j < NUM_COLUMN; j += 1) {
-			 	pSquares[row][j]->print();
-
-				std::cout << pSquares[row][j].use_count() - 1;
-
-				std::cout << '\t';
+				mark(i, j);
 			}
-			std::cout << '\n';
 		}
-
 	}
 
-	void move(int srow, int scol, int erow, int ecol) {
-		// pSquares[erow][ecol]->setPiece(pSquares[srow][scol]->getPiece());
-		pSquares[erow][ecol]->setPiece(std::make_unique<Piece>(
-					pSquares[srow][scol]->getPieceType(),
-					pSquares[srow][scol]->getPieceColor()));
-		pSquares[srow][scol]->setPiece(std::make_unique<Piece>());
+	void mark(int row, int col) {
+		switch (pSquares[row][col]->getPieceType()) {
+			case rook: 
+				markRF(row, col);
+				mark(pSquares[row][col]);
+				break;
+			case bishop: 
+				markD(row, col);
+				mark(pSquares[row][col]);
+				break;
+			case queen: 
+			case king: 
+				markRF(row, col);
+				markD(row, col);
+				mark(pSquares[row][col]);
+				break;
+			case knight: 
+				markL(row, col);
+				mark(pSquares[row][col]);
+				break;
+			case pawn: 
+				// special case *todo*
+				mark(pSquares[row][col]);
+				break;
+			default: // empty
+				break;
+		}
+	}
+
+	// mark diagnol
+	void markD(int row, int col) {
+		for (int i = 1; i < std::min(row + 1, col + 1); i += 1) {
+			if (!mark(pSquares[row][col], pSquares[row - i][col - i])) break;
+		}
+		for (int i = 1; i < std::min(NUM_ROW - row, NUM_COLUMN - col); i += 1) {
+			if (!mark(pSquares[row][col], pSquares[row + i][col + i])) break;
+		}
+		for (int i = 1; i < std::min(NUM_ROW - row, col + 1); i += 1) {
+			if (!mark(pSquares[row][col], pSquares[row + i][col - i])) break;
+		}
+		for (int i = 1; i < std::min(row + 1, NUM_COLUMN - col); i += 1) {
+			if (!mark(pSquares[row][col], pSquares[row - i][col + i])) break;
+		}
+	}
+
+	// mark rank and file
+	void markRF(int row, int col) {
+		for (int i = 1; i < row + 1; i += 1) {
+			if (!mark(pSquares[row][col], pSquares[row - i][col])) break;
+		}
+		for (int i = 1; i < NUM_ROW - row; i += 1) {
+			if (!mark(pSquares[row][col], pSquares[row + i][col])) break;
+		}
+		for (int i = 1; i < col + 1; i += 1) {
+			if (!mark(pSquares[row][col], pSquares[row][col - i])) break;
+		}
+		for (int i = 1; i < NUM_COLUMN - col; i += 1) {
+			if (!mark(pSquares[row][col], pSquares[row][col + i])) break;
+		}
+	}
+
+	// mark L side
+	void markL(int row, int col) {
+		if (row > 1 && col > 0) {
+			mark(pSquares[row][col], pSquares[row - 2][col - 1]);
+		}
+		if (row > 1 && col < NUM_COLUMN - 1) {
+			mark(pSquares[row][col], pSquares[row - 2][col + 1]);
+		}
+		if (row > 0 && col > 1) {
+			mark(pSquares[row][col], pSquares[row - 1][col - 2]);
+		}
+		if (row > 0 && col < NUM_COLUMN - 2) {
+			mark(pSquares[row][col], pSquares[row - 1][col + 2]);
+		}
+		if (row < NUM_ROW - 1 && col > 1) {
+			mark(pSquares[row][col], pSquares[row + 1][col - 2]);
+		}
+		if (row < NUM_ROW - 1 && col < NUM_COLUMN - 2) {
+			mark(pSquares[row][col], pSquares[row + 1][col + 2]);
+		}
+		if (row < NUM_ROW - 2 && col > 0) {
+			mark(pSquares[row][col], pSquares[row + 2][col - 1]);
+		}
+		if (row < NUM_ROW - 2 && col < NUM_COLUMN - 1) {
+			mark(pSquares[row][col], pSquares[row + 2][col + 1]);
+		}
+	}
+
+	// return false if should not continute marking
+	bool mark(std::shared_ptr<Square> pSquare, std::shared_ptr<Square> mpSquare) {
+		mpSquare->addSquare(pSquare->getptr());
+
+		if (mpSquare->getPieceType() == empty) {
+			if (pSquare->getPieceType() == king /*|| 
+					pSquare->getPieceType() == knight*/) {
+				return false;
+			}
+			return true;
+		}
+		return false;
+	}
+
+	// mark self
+	void mark(std::shared_ptr<Square> pSquare) {
+		pSquare->addSquare(pSquare->getptr());
 	}
 
 };
@@ -272,16 +470,14 @@ int main () {
 	board.init();
 	board.print();
 
-	board.mark();
-	board.print();
-
+	// simple test
 	board.move(0,0,4,4);
 	board.print();
-
+	
 	return 0;
 }
 
-
-// Todo:
-// g++ main.cc -o chess -std=c++11
-// 177: when piece move, clear vector
+/* todo */
+// pawn basic, en passant, promotion
+// castling
+// check
